@@ -12,10 +12,7 @@ pipeline {
         stage('Backend Test') {
             steps {
                 sh '''
-                    docker run --rm \
-                    -v "$WORKSPACE/back-end:/app" \
-                    -w /app \
-                    maven:3.9-eclipse-temurin-17 \
+                    cd "$WORKSPACE/back-end"
                     mvn test
                 '''
             }
