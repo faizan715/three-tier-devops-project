@@ -14,15 +14,16 @@ import java.sql.PreparedStatement;
 
 public class App {
 
+    private static final String DB_URL =
+            "jdbc:mysql://database:3306/mydb";
+
+    private static final String DB_USER = "root";
+
+    private static final String DB_PASSWORD = "root";
+
     public static void main(String[] args) throws Exception {
 
         Class.forName("com.mysql.cj.jdbc.Driver");
-
-        Connection connection = DriverManager.getConnection(
-                "jdbc:mysql://database:3306/mydb",
-                "root",
-                "root"
-        );
 
         String createTable =
                 "CREATE TABLE IF NOT EXISTS employees (" +
@@ -31,7 +32,15 @@ public class App {
                 "email VARCHAR(100)," +
                 "designation VARCHAR(100))";
 
-        connection.createStatement().execute(createTable);
+        try (Connection connection =
+                     DriverManager.getConnection(
+                             DB_URL,
+                             DB_USER,
+                             DB_PASSWORD
+                     )) {
+
+            connection.createStatement().execute(createTable);
+        }
 
         HttpServer server = HttpServer.create(
                 new InetSocketAddress(8080),
@@ -45,7 +54,8 @@ public class App {
 
                 try {
 
-                    if (exchange.getRequestMethod().equalsIgnoreCase("POST")) {
+                    if (exchange.getRequestMethod()
+                            .equalsIgnoreCase("POST")) {
 
                         BufferedReader reader =
                                 new BufferedReader(
@@ -54,16 +64,17 @@ public class App {
                                         )
                                 );
 
-                        StringBuilder body = new StringBuilder();
+                        StringBuilder body =
+                                new StringBuilder();
 
                         String line;
 
                         while ((line = reader.readLine()) != null) {
-
                             body.append(line);
                         }
 
-                        String requestBody = body.toString();
+                        String requestBody =
+                                body.toString();
 
                         String name =
                                 requestBody
@@ -80,16 +91,26 @@ public class App {
                                         .split("\"designation\":\"")[1]
                                         .split("\"")[0];
 
-                        PreparedStatement statement =
-                                connection.prepareStatement(
-                                        "INSERT INTO employees(name, email, designation) VALUES (?, ?, ?)"
-                                );
+                        String sql =
+                                "INSERT INTO employees" +
+                                "(name, email, designation) " +
+                                "VALUES (?, ?, ?)";
 
-                        statement.setString(1, name);
-                        statement.setString(2, email);
-                        statement.setString(3, designation);
+                        try (Connection connection =
+                                     DriverManager.getConnection(
+                                             DB_URL,
+                                             DB_USER,
+                                             DB_PASSWORD
+                                     );
+                             PreparedStatement statement =
+                                     connection.prepareStatement(sql)) {
 
-                        statement.executeUpdate();
+                            statement.setString(1, name);
+                            statement.setString(2, email);
+                            statement.setString(3, designation);
+
+                            statement.executeUpdate();
+                        }
 
                         String response =
                                 "Employee Saved Successfully";
@@ -99,31 +120,50 @@ public class App {
                                 response.length()
                         );
 
-                        OutputStream os =
-                                exchange.getResponseBody();
+                        try (OutputStream os =
+                                     exchange.getResponseBody()) {
 
-                        os.write(response.getBytes());
+                            os.write(response.getBytes());
+                        }
 
-                        os.close();
+                    } else {
+
+                        String response =
+                                "Method Not Allowed";
+
+                        exchange.sendResponseHeaders(
+                                405,
+                                response.length()
+                        );
+
+                        try (OutputStream os =
+                                     exchange.getResponseBody()) {
+
+                            os.write(response.getBytes());
+                        }
                     }
 
                 } catch (Exception e) {
 
+                    e.printStackTrace();
+
                     try {
 
-                        String response = e.getMessage();
+                        String response =
+                                e.getMessage() != null
+                                        ? e.getMessage()
+                                        : "Internal Server Error";
 
                         exchange.sendResponseHeaders(
                                 500,
                                 response.length()
                         );
 
-                        OutputStream os =
-                                exchange.getResponseBody();
+                        try (OutputStream os =
+                                     exchange.getResponseBody()) {
 
-                        os.write(response.getBytes());
-
-                        os.close();
+                            os.write(response.getBytes());
+                        }
 
                     } catch (Exception ex) {
 
