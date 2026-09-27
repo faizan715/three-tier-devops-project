@@ -1,6 +1,10 @@
 pipeline {
     agent any
 
+    environment {
+        IMAGE_TAG = "${BUILD_NUMBER}"
+    }
+
     stages {
 
         stage('Checkout') {
@@ -21,8 +25,8 @@ pipeline {
         stage('Build Docker Images') {
             steps {
                 sh '''
-                    docker build -t faizan715/employee-backend:latest ./back-end
-                    docker build -t faizan715/employee-frontend:latest ./front-end
+                    docker build -t faizan715/employee-backend:$IMAGE_TAG ./back-end
+                    docker build -t faizan715/employee-frontend:$IMAGE_TAG ./front-end
                 '''
             }
         }
@@ -39,8 +43,8 @@ pipeline {
                     sh '''
                         echo "$DOCKER_PASSWORD" | docker login -u "$DOCKER_USERNAME" --password-stdin
 
-                        docker push faizan715/employee-backend:latest
-                        docker push faizan715/employee-frontend:latest
+                        docker push faizan715/employee-backend:$IMAGE_TAG
+                        docker push faizan715/employee-frontend:$IMAGE_TAG
 
                         docker logout
                     '''
@@ -63,20 +67,38 @@ pipeline {
                         echo "Deploying database..."
                         kubectl apply -f k8s/database/ -n employee-app
 
-                        echo "Deploying backend..."
+                        echo "Applying backend resources..."
                         kubectl apply -f k8s/backend/ -n employee-app
 
-                        echo "Deploying frontend..."
+                        echo "Applying frontend resources..."
                         kubectl apply -f k8s/frontend/ -n employee-app
 
+                        echo "Loading versioned images into Kind..."
+                        kind load docker-image faizan715/employee-backend:$IMAGE_TAG --name employee--devops
+                        kind load docker-image faizan715/employee-frontend:$IMAGE_TAG --name employee--devops
+
+                        echo "Updating deployments to image version $IMAGE_TAG..."
+
+                        kubectl set image deployment/backend \
+                            backend=faizan715/employee-backend:$IMAGE_TAG \
+                            -n employee-app
+
+                        kubectl set image deployment/frontend \
+                            frontend=faizan715/employee-frontend:$IMAGE_TAG \
+                            -n employee-app
+
                         echo "Waiting for deployments..."
+
                         kubectl rollout status deployment/database -n employee-app
                         kubectl rollout status deployment/backend -n employee-app
                         kubectl rollout status deployment/frontend -n employee-app
 
                         echo "Deployment completed successfully!"
 
+                        echo "Pods:"
                         kubectl get pods -n employee-app
+
+                        echo "Services:"
                         kubectl get services -n employee-app
                     '''
                 }
