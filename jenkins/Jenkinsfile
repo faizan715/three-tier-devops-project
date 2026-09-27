@@ -1,0 +1,89 @@
+pipeline {
+    agent any
+
+    stages {
+
+        stage('Checkout') {
+            steps {
+                checkout scm
+            }
+        }
+
+        stage('Backend Test') {
+            steps {
+                sh '''
+                    docker run --rm \
+                    -v "$WORKSPACE/back-end:/app" \
+                    -w /app \
+                    maven:3.9-eclipse-temurin-17 \
+                    mvn test
+                '''
+            }
+        }
+
+        stage('Build Docker Images') {
+            steps {
+                sh '''
+                    docker build -t faizan715/employee-backend:latest ./back-end
+                    docker build -t faizan715/employee-frontend:latest ./front-end
+                '''
+            }
+        }
+
+        stage('Push Docker Images') {
+            steps {
+                withCredentials([
+                    usernamePassword(
+                        credentialsId: 'dockerhub-credentials',
+                        usernameVariable: 'DOCKER_USERNAME',
+                        passwordVariable: 'DOCKER_PASSWORD'
+                    )
+                ]) {
+                    sh '''
+                        echo "$DOCKER_PASSWORD" | docker login -u "$DOCKER_USERNAME" --password-stdin
+
+                        docker push faizan715/employee-backend:latest
+                        docker push faizan715/employee-frontend:latest
+
+                        docker logout
+                    '''
+                }
+            }
+        }
+
+        stage('Deploy to Kubernetes') {
+            steps {
+                withCredentials([
+                    file(
+                        credentialsId: 'kind-kubeconfig',
+                        variable: 'KUBECONFIG'
+                    )
+                ]) {
+                    sh '''
+                        echo "Checking Kubernetes connection..."
+                        kubectl get nodes
+
+                        echo "Deploying database..."
+                        kubectl apply -f k8s/database/ -n employee-app
+
+                        echo "Deploying backend..."
+                        kubectl apply -f k8s/backend/ -n employee-app
+
+                        echo "Deploying frontend..."
+                        kubectl apply -f k8s/frontend/ -n employee-app
+
+                        echo "Waiting for deployments..."
+                        kubectl rollout status deployment/database -n employee-app
+                        kubectl rollout status deployment/backend -n employee-app
+                        kubectl rollout status deployment/frontend -n employee-app
+
+                        echo "Deployment completed successfully!"
+
+                        kubectl get pods -n employee-app
+                        kubectl get services -n employee-app
+                    '''
+                }
+            }
+        }
+    }
+}

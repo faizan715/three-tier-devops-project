@@ -1,0 +1,55 @@
+services:
+
+  database:
+    image: mysql:8.0
+    container_name: employee-database
+
+    environment:
+      MYSQL_ROOT_PASSWORD: root
+      MYSQL_DATABASE: mydb
+
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-uroot", "-proot"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+    volumes:
+      - mysql-data:/var/lib/mysql
+
+    networks:
+      - employee-network
+
+  backend:
+    image: employee-backend:1.0
+    container_name: employee-backend
+
+    depends_on:
+      database:
+        condition: service_healthy
+
+    ports:
+      - "8080:8080"
+
+    networks:
+      - employee-network
+
+  frontend:
+    image: employee-frontend:1.0
+    container_name: employee-frontend
+
+    depends_on:
+      backend:
+        condition: service_started
+
+    ports:
+      - "80:80"
+
+    networks:
+      - employee-network
+
+volumes:
+  mysql-data:
+
+networks:
+  employee-network:
